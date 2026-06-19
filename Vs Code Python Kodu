@@ -1,0 +1,124 @@
+import pygame
+import serial
+import math
+import sys
+# --- SERİ PORT AYARLARI ---
+SERIAL_PORT = 'COM7'
+BAUD_RATE = 230400
+try:
+# Portu manuel açarak reset atmayı (DTR/RTS) engelliyoruz
+ser = serial.Serial()
+ser.port = SERIAL_PORT
+ser.baudrate = BAUD_RATE
+ser.timeout = 0.1
+ser.dtr = False # Arduino/dsPIC resetlenmesini engelle
+ser.rts = False # Arduino/dsPIC resetlenmesini engelle
+ser.open()
+print(f"{SERIAL_PORT} bağlantısı {BAUD_RATE} baud hızında başarılı!")
+except Exception as e:
+print(f"Port açılamadı: {e}")
+print("Lütfen doğru COM portunu girdiğinizden veya portun başka bir programda açık olmadığından emin olun.")
+sys.exit()
+# --- PYGAME EKRAN AYARLARI ---
+pygame.init()
+WIDTH, HEIGHT = 800, 500
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("dsPIC33EP - Ultrasonik Radar Ekranı (Max 200cm)")
+clock = pygame.time.Clock()
+# Renk Tanımlamaları
+BACKGROUND = (10, 20, 10)
+RADAR_GREEN = (0, 200, 0)
+GRID_GREEN = (0, 70, 0)
+OBJECT_RED = (255, 0, 0)
+TEXT_WHITE = (240, 240, 240)
+# Radar Merkezi ve Sınırlar
+CENTER_X = WIDTH // 2
+CENTER_Y = HEIGHT - 50
+MAX_RADIUS = 380 # Ekrana çizilecek en büyük halkanın yarıçapı (piksel)
+MAX_DISTANCE_CM = 200 # YENİ SINIR: Maksimum ölçüm 200 cm
+# Son tespit edilen nesnelerin haritası (Açı -> Mesafe)
+radar_map = {}
+# Ekranda göstereceğimiz son verileri tutacak değişkenler
+latest_dist = 0.0
+latest_angle = 0
+23
+def parse_dspic_data(line):
+"""
+dsPIC'ten gelen "45, 12.45" formatındaki metinden
+mesafe ve açı değerlerini ayıklar.
+"""
+try:
+parts = line.split(',')
+if len(parts) == 2:
+angle = int(parts[0].strip())
+distance = float(parts[1].strip())
+return distance, angle
+except Exception:
+pass
+return None
+running = True
+while running:
+screen.fill(BACKGROUND)
+# 1) Pygame Etkinlik Kontrolü
+for event in pygame.event.get():
+if event.type == pygame.QUIT:
+running = False
+# 2) Seri Porttan Veri Okuma
+if ser.in_waiting > 0:
+try:
+raw_line = ser.readline().decode('utf-8', errors='ignore').strip()
+if raw_line:
+parsed = parse_dspic_data(raw_line)
+if parsed:
+dist, angle = parsed
+latest_angle = angle
+latest_dist = dist
+# Mesafe 4cm ile 200cm arasındaysa kaydet, değilse ekrandan sil
+if 4.0 <= dist <= MAX_DISTANCE_CM:
+radar_map[angle] = dist
+else:
+radar_map[angle] = 0
+except Exception:
+pass
+# 3) Radar Izgarasını Çizme (50'şer cm'lik dilimler halinde)
+# 50, 100, 150, 200 cm için halkalar çiziyoruz
+for cm_val in range(50, MAX_DISTANCE_CM + 1, 50):
+# cm değerinin ekrandaki piksel karşılığını bul
+r = int((cm_val / MAX_DISTANCE_CM) * MAX_RADIUS)
+pygame.draw.circle(screen, GRID_GREEN, (CENTER_X, CENTER_Y), r, 1)
+# Etiketleri ekle (50cm, 100cm vb.)
+font = pygame.font.SysFont('Consolas', 12)
+24
+text = font.render(f"{cm_val}cm", True, GRID_GREEN)
+screen.blit(text, (CENTER_X + r - 15, CENTER_Y + 5))
+# Açı çizgilerini çizme (30, 60, 90, 120, 150 dereceler için)
+for a in range(30, 180, 30):
+rad = math.radians(a)
+x = CENTER_X + MAX_RADIUS * math.cos(rad)
+y = CENTER_Y - MAX_RADIUS * math.sin(rad)
+pygame.draw.line(screen, GRID_GREEN, (CENTER_X, CENTER_Y), (x, y), 1)
+# 4) Tespit Edilen Nesneleri ve Tarama Çizgisini Çizme
+for angle, dist in list(radar_map.items()):
+if 0 < dist <= MAX_DISTANCE_CM:
+mapped_radius = (dist / MAX_DISTANCE_CM) * MAX_RADIUS
+rad = math.radians(angle)
+obj_x = CENTER_X + mapped_radius * math.cos(rad)
+obj_y = CENTER_Y - mapped_radius * math.sin(rad)
+pygame.draw.circle(screen, OBJECT_RED, (int(obj_x), int(obj_y)), 5)
+# Güncel açı tarama çizgisi
+if angle == latest_angle:
+scan_x = CENTER_X + MAX_RADIUS * math.cos(rad)
+scan_y = CENTER_Y - MAX_RADIUS * math.sin(rad)
+pygame.draw.line(screen, RADAR_GREEN, (CENTER_X, CENTER_Y), (scan_x, scan_y), 3)
+# 5) O anki en son veriyi ekrana yazdır
+font_info = pygame.font.SysFont('Consolas', 20)
+if 0 < latest_dist <= MAX_DISTANCE_CM:
+info_text = font_info.render(f"Mesafe: {latest_dist:.1f} cm | Aci: {latest_angle}°", True, TEXT_WHITE)
+else:
+info_text = font_info.render(f"Mesafe: Menzil Disi | Aci: {latest_angle}°", True, TEXT_WHITE)
+screen.blit(info_text, (20, 20))
+pygame.display.flip()
+clock.tick(60)
+if ser.is_open:
+ser.close()
+pygame.quit()
