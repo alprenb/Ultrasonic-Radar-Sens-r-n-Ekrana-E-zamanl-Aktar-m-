@@ -27,7 +27,10 @@ Projenin temel amacı, gömülü sistemlerde donanımsal zamanlayıcıları (Tim
 2. Projeyi MPLAB X IDE ile açın.
 3. BullyCPP veya tercih ettiğiniz bir programlayıcı/debugger (örn. PICkit 3/4) ile kodu derleyip dsPIC33'e yükleyin .
 
-📸 Görseller ve Şemalar
+📸 Görseller
 
+<img width="657" height="331" alt="ultrasonic radar ekranı" src="https://github.com/user-attachments/assets/fd39d73f-fb35-4d67-988a-03515a998616" />
+
+<img width="610" height="791" alt="image" src="https://github.com/user-attachments/assets/be03bb23-0f40-43c4-8c4c-9272e053dab4" />
 
 
