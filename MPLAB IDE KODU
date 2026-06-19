@@ -1,0 +1,153 @@
+#include "pic24_all.h"
+#include <stdio.h>
+#define trigger LATBbits.LATB14
+volatile uint16_t u16_oflowCount = 0;
+// Timer2 Kesmesi (HC-SR04 zaman takibi için)
+void _ISRFAST _T2Interrupt (void) {
+u16_oflowCount++;
+_T2IF = 0; // Kesme bayra??n? temizle
+}
+typedef enum {
+STATE_WAIT_FOR_RISE_EDGE = 0,
+STATE_WAIT_FOR_FALL_EDGE,
+} ICSTATE;
+ICSTATE e_isrICState = STATE_WAIT_FOR_RISE_EDGE;
+volatile uint8_t u8_captureFlag = 0;
+volatile uint16_t u16_lastCapture;
+volatile uint16_t u16_thisCapture;
+volatile uint32_t u32_pulseWidth;
+volatile float distance=0;
+// Input Capture 1 Kesmesi (HC-SR04 Echo sinyali okuması)
+void _ISRFAST _IC1Interrupt() {
+_IC1IF = 0;
+u16_thisCapture = IC1BUF; // Ta?may? önlemek için her zaman bufferı oku
+switch (e_isrICState) {
+case STATE_WAIT_FOR_RISE_EDGE:
+if (u8_captureFlag == 0) {
+if (u16_thisCapture == 0 && _T2IF) u16_oflowCount = 0 -1;
+else u16_oflowCount = 0;
+u16_lastCapture = u16_thisCapture;
+e_isrICState = STATE_WAIT_FOR_FALL_EDGE;
+}
+16
+break;
+case STATE_WAIT_FOR_FALL_EDGE:
+if (u16_thisCapture == 0 && _T2IF) u16_oflowCount++;
+u32_pulseWidth = computeDeltaTicksLong(u16_lastCapture,u16_thisCapture,PR2, u16_oflowCount);
+u32_pulseWidth = ticksToUs(u32_pulseWidth,getTimerPrescale(T2CONbits));
+distance=u32_pulseWidth * 0.017219;
+u8_captureFlag = 1;
+e_isrICState = STATE_WAIT_FOR_RISE_EDGE;
+break;
+default:
+e_isrICState = STATE_WAIT_FOR_RISE_EDGE;
+}
+}
+// Sensör pin konfigürasyonlar?
+inline void CONFIG_capture_input() {
+CONFIG_RB13_AS_DIG_INPUT(); // Echo: RB13 giriş
+DELAY_US(1);
+}
+inline void CONFIG_Trig() {
+CONFIG_RB14_AS_DIG_OUTPUT(); // Trig: RB14 ç?k??
+trigger=0;
+}
+void configInputCapture1(void) {
+CONFIG_IC1_TO_RP(RB13_RP); // IC1 modülünü RB13'e yönlendir (ECHO)
+#ifdef IC1CON1 // PIC24E/dsPIC33E serisi için
+IC1CON1 = IC_TIMER2_SRC |
+IC_INT_1CAPTURE |
+IC_EVERY_EDGE;
+IC1CON2 = IC_IC32_OFF| IC_SYNC_MODE | IC_SYNCSEL_TIMER2;
+#endif
+_IC1IF = 0;
+_IC1IP = 2;
+_IC1IE = 1;
+}
+void configTimer2(void) {
+T2CON = T2_OFF | T2_IDLE_CON | T2_GATE_OFF
+| T2_32BIT_MODE_OFF
+| T2_SOURCE_INT
+| T2_PS_1_8 ; // FCY=40 MHz'de 1 tick = 0.2 us
+PR2 = 0xFFFF;
+TMR2 = 0;
+_T2IF = 0;
+_T2IP = 1;
+_T2IE = 1;
+T2CONbits.TON = 1;
+}
+// Servo Motor PWM Konfigürasyonu (Timer3 ve OC1)
+void configPWM_Servo(void) {
+17
+CONFIG_RB6_AS_DIG_OUTPUT();
+CONFIG_OC1_TO_RP(RB6_RP); // OC1 modülünü RB6'ya yönlendir (SERVO PWM)
+// Timer3 ayarlar? (FCY = 40MHz, 20ms periyot, 1:64 prescaler)
+T3CONbits.TON = 0;
+T3CONbits.TCKPS = 0b10; // 1:64 prescaler
+PR3 = 12499; // 20ms (50Hz) için periyot de?eri -> (40MHz / 64) * 0.02s - 1 = 12499
+TMR3 = 0;
+// dsPIC33E OC1 Ayarlar?
+OC1CON1 = 0;
+OC1CON2 = 0;
+OC1CON1bits.OCTSEL = 0b001; // Saat kaynak olarak Timer3
+OC1CON1bits.OCM = 0b110; // Edge-aligned PWM modu
+OC1CON2bits.SYNCSEL = 0x0D; // Timer3 senkronizasyonu
+OC1R = 937; // Ba?lang?ç: 90 derece (1.5ms pulse)
+OC1RS = 937;
+T3CONbits.TON = 1; // Timer3'ü ba?lat
+}
+// Servo aç?s?n? ayarlayan fonksiyon
+void set_servo_angle(uint8_t angle) {
+if (angle > 180) angle = 180;
+// Standart Servo hesaplamas?:
+// 0 derece -> ~1.0 ms pulse -> 625 tick (Bazı servolarda bu 0.5ms yani 312 tick olabilir)
+// 180 derece -> ~2.0 ms pulse -> 1250 tick (Bazı servolarda bu 2.5ms yani 1562 tick olabilir)
+// E?er servonuz tam 180 dönmüyorsa 625 ve 1250 de?erleriyle oynayabilirsiniz.
+uint32_t min_tick = 625;
+uint32_t max_tick = 1250;
+uint16_t duty_ticks = min_tick + ((uint32_t)angle * (max_tick - min_tick)) / 180;
+OC1RS = duty_ticks;
+}
+void trigger_ultrasonic() {
+trigger = 1;
+DELAY_US(15);
+trigger = 0;
+}
+int main (void) {
+configBasic(HELLO_MSG);
+// Modülleri başlat
+CONFIG_capture_input(); // RB13 (Echo)
+CONFIG_Trig(); // RB14 (Trig)
+configInputCapture1(); // HC-SR04 Capture
+configTimer2(); // HC-SR04 Zamanlay?c?
+configPWM_Servo(); // Servo PWM başlangıç
+18
+int current_angle = 0;
+int angle_step = 2; // Her döngüde 2 derece hareket edecek (çözünürlü?ü artırmak isterseniz 1 yapın)
+while (1) {
+// 1. Servo motoru yeni açıya getir
+set_servo_angle(current_angle);
+DELAY_MS(30); // Servonun fiziksel olarak o aç?ya gelmesini bekle (Mekanik gecikme)
+// 2. Sensörden okuma yap
+trigger_ultrasonic();
+while (!u8_captureFlag) doHeartbeat(); // Ölçüm tamamlanana kadar bekle
+u8_captureFlag = 0;
+// 3. Ç?kt?y? PC'deki arayüze bas (Format: "Açı,Mesafe")
+if(distance > 4.00 && distance < 400.00) {
+printf("%d, %.2f\r\n", current_angle, distance);
+} else {
+// Aral?k d???ndaysa -1 veya 0 göndererek radar program?na hiçbir ?ey çizmemesini söyleyebiliriz.
+printf("%d, -1\r\n", current_angle);
+}
+// 4. Aç?y? güncelle (Ping-Pong / ?leri-Geri süpürme hareketi)
+current_angle += angle_step;
+if (current_angle >= 180) {
+current_angle = 180;
+angle_step = -2; // Maksimum aç?ya ula??nca geri dönmeye başla
+}
+else if (current_angle <= 0) {
+current_angle = 0;
+angle_step = 2; // Minimum açıya ula??nca tekrar ileri git
+}
+}
+}
