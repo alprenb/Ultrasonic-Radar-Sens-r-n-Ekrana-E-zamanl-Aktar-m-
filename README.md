@@ -23,9 +23,8 @@ Projenin temel amacı, gömülü sistemlerde donanımsal zamanlayıcıları (Tim
 3. Register Seviyesinde Konfigürasyon: G/Ç pinleri, osilatör ayarları ve kesme bayrakları doğrudan register manipülasyonu ile yönetilerek maksimum performans hedeflendi.
 
 📂 Kurulum ve Kullanım
-1. Depoyu klonlayın: https://github.com/alpren.b/dspic33-ultrasonic-radar.git
-2. Projeyi MPLAB X IDE ile açın.
-3. BullyCPP veya tercih ettiğiniz bir programlayıcı/debugger (örn. PICkit 3/4) ile kodu derleyip dsPIC33'e yükleyin .
+1. Projeyi MPLAB X IDE ile açın.
+2. BullyCPP veya tercih ettiğiniz bir programlayıcı/debugger (örn. PICkit 3/4) ile kodu derleyip dsPIC33'e yükleyin .
 
 📸 Görseller
 
