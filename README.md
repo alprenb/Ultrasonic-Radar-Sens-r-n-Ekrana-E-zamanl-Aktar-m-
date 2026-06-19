@@ -25,6 +25,23 @@ Projenin temel amacı, gömülü sistemlerde donanımsal zamanlayıcıları (Tim
 📂 Kurulum ve Kullanım
 1. Projeyi MPLAB X IDE ile açın.
 2. BullyCPP veya tercih ettiğiniz bir programlayıcı/debugger (örn. PICkit 3/4) ile kodu derleyip dsPIC33'e yükleyin .
+ 
+**Bağlantı Listesi
+HC-SR04 Ultrasonik Sensör:
+VCC: Arduino 5V pini
+Trig: RB14 pini
+Echo: RB13 pini
+GND: Ortak Toprak (GND) 
+
+SG90 Mini Servo Motor:
+Kırmızı Kablo (VCC): Arduino 5V pini
+Kahverengi/Siyah Kablo (GND): Ortak Toprak (GND)
+Turuncu/Sarı Kablo (Sinyal/PWM): RB6 pini
+
+PC Haberleşmesi (USB-TTL / Bootloader):
+dsPIC'in UART TX pini ➜ USB Dönüştürücünün RX pinine.
+dsPIC'in UART RX pini ➜ USB Dönüştürücünün TX pinine.
+Dönüştürücünün GND pini ➜ Sistemin ortak GND hattına.
 
 📸 Görseller
 
